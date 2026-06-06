@@ -71,6 +71,26 @@ flutter test
 
 Smoke test covers `NavItem` ordering, the cineby.at URL contract, and the `ActiveNavTab.updateFromUrl()` URL→tab mapping.
 
+## CI
+
+GitHub Actions workflows live in `.github/workflows/`:
+
+- **`build.yml`** — runs `flutter analyze`, `flutter test`, and `flutter build apk --debug` on every push and PR to `main`. The debug APK is uploaded as a workflow artifact.
+- **`release.yml`** — runs on every `v*` tag push (e.g. `v0.1.0`). Builds per-ABI release APKs, uploads them as artifacts, and creates a GitHub Release with the APKs attached.
+
+Both workflows apply the `flutter_inappwebview_android` proguard patch (see the "Known build patch" section above) automatically.
+
+## Releases
+
+To cut a release:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The release workflow builds, uploads, and creates the GitHub Release automatically. To re-run with a different tag, use the **Run workflow** button on the Actions tab and supply the tag name.
+
 ## Platform notes
 
 - **Android `minSdk = 21`** (required by `flutter_downloader` and `flutter_inappwebview`)
