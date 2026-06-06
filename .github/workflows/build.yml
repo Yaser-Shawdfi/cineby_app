@@ -135,18 +135,6 @@ jobs:
           echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
           echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
 
-      - name: Pin Gradle 8.7
-        # The project's gradle-wrapper.properties pins Gradle 9.1.0, which
-        # works fine for `flutter run` on a developer machine but breaks
-        # `flutter build apk` in CI: Gradle 9.x's embedded Groovy does not
-        # include the legacy `groovy.xml.QName` class, and Flutter's
-        # bundled flutter_tools/gradle/flutter.groovy imports it.
-        # Pin Gradle 8.7 in CI only — local development is unaffected.
-        run: |
-          sed -i 's|gradle-9\.1\.0-all\.zip|gradle-8.7-all.zip|' \
-            android/gradle/wrapper/gradle-wrapper.properties
-          cat android/gradle/wrapper/gradle-wrapper.properties
-
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -162,6 +150,25 @@ jobs:
           GRADLE_FILE=$(find ~/.pub-cache -path '*flutter_inappwebview_android-*/android/build.gradle' 2>/dev/null | head -1)
           if [ -n "$GRADLE_FILE" ] && grep -q "proguard-android.txt" "$GRADLE_FILE"; then
             sed -i.bak "s|getDefaultProguardFile('proguard-android.txt')|'proguard-rules.pro'|g" "$GRADLE_FILE"
+          fi
+
+      - name: Add groovy-xml to Flutter's bundled :gradle subproject
+        # `flutter_tools/gradle/flutter.groovy` imports `groovy.xml.QName`,
+        # which is missing from the classpath when AGP 9.x / Gradle 9.x's
+        # embedded Groovy distribution is used. Adding `groovy-xml` as a
+        # buildscript classpath dependency makes `QName` resolvable.
+        # This patches the Flutter SDK in $FLUTTER_HOME on the runner; it
+        # is not a project change.
+        run: |
+          FLUTTER_GRADLE_BUILD="$FLUTTER_HOME/packages/flutter_tools/gradle/build.gradle.kts"
+          if [ -f "$FLUTTER_GRADLE_BUILD" ]; then
+            if ! grep -q "groovy-xml" "$FLUTTER_GRADLE_BUILD"; then
+              echo "Patching $FLUTTER_GRADLE_BUILD to add groovy-xml"
+              printf '\n// PATCH: groovy-xml for flutter.groovy QName import\ndependencies { compileOnly("org.codehaus.groovy:groovy-xml:3.0.21") }\n' >> "$FLUTTER_GRADLE_BUILD"
+            fi
+          else
+            echo "WARN: $FLUTTER_GRADLE_BUILD not found"
+            ls "$FLUTTER_HOME/packages/flutter_tools/gradle/" 2>/dev/null || true
           fi
 
       - name: flutter build apk --debug
