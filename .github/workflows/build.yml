@@ -172,9 +172,19 @@ jobs:
           fi
 
       - name: flutter build apk --debug
-        run: flutter build apk --debug
+        run: flutter build apk --debug 2>&1 | tee /tmp/flutter-build.log; BUILD_EXIT=${PIPESTATUS[0]}; echo "build exit=$BUILD_EXIT"; exit $BUILD_EXIT
+
+      - name: Upload build log (always, for debugging)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-build-log
+          path: /tmp/flutter-build.log
+          if-no-files-found: warn
+          retention-days: 3
 
       - name: Upload APK artifact
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: app-debug
