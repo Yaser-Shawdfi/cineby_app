@@ -163,23 +163,40 @@ jobs:
         # up automatically. This patches the Flutter SDK in $FLUTTER_HOME
         # on the runner; it is not a project change.
         run: |
+          echo "FLUTTER_HOME=$FLUTTER_HOME"
+          echo "FLUTTER_GROOVY_DIR candidate 1: $FLUTTER_HOME/packages/flutter_tools/gradle/src/main/groovy"
           FLUTTER_GROOVY_DIR="$FLUTTER_HOME/packages/flutter_tools/gradle/src/main/groovy"
-          SHIM_FILE="$FLUTTER_GROOVY_DIR/groovy/xml/QName.groovy"
-          echo "Looking for Groovy source dir: $FLUTTER_GROOVY_DIR"
           if [ ! -d "$FLUTTER_GROOVY_DIR" ]; then
-            echo "WARN: $FLUTTER_GROOVY_DIR not found; cannot install shim"
-            echo "FLUTTER_HOME is: $FLUTTER_HOME"
-            ls "$FLUTTER_HOME/packages/flutter_tools/gradle/src/main/" 2>/dev/null || true
-            exit 1
+            # Some Flutter action versions install to a different path.
+            echo "Not found. Searching for flutter_tools/gradle in common locations..."
+            ls -la "$FLUTTER_HOME" 2>/dev/null || true
+            for candidate in \
+              "/opt/hostedtoolcache/flutter/stable-3.27.4-x64/flutter" \
+              "/opt/hostedtoolcache/flutter/stable-x64/flutter" \
+              "/usr/local/flutter" \
+              "/opt/flutter"; do
+              if [ -d "$candidate/packages/flutter_tools/gradle/src/main/groovy" ]; then
+                FLUTTER_GROOVY_DIR="$candidate/packages/flutter_tools/gradle/src/main/groovy"
+                echo "Found Flutter at: $candidate"
+                break
+              fi
+            done
           fi
+          if [ ! -d "$FLUTTER_GROOVY_DIR" ]; then
+            echo "WARN: Flutter SDK location not found; cannot install shim"
+            echo "Listing /opt/hostedtoolcache:"
+            ls -la /opt/hostedtoolcache/ 2>/dev/null || true
+            echo "Listing $FLUTTER_HOME/packages/flutter_tools/gradle/src/main/:"
+            ls -la "$FLUTTER_HOME/packages/flutter_tools/gradle/src/main/" 2>/dev/null || true
+            # Don't exit — let the build fail and we'll see the real error
+            exit 0
+          fi
+          SHIM_FILE="$FLUTTER_GROOVY_DIR/groovy/xml/QName.groovy"
+          echo "Will write shim to: $SHIM_FILE"
           mkdir -p "$FLUTTER_GROOVY_DIR/groovy/xml"
           if [ ! -f "$SHIM_FILE" ]; then
-            echo "Writing shim to $SHIM_FILE"
-            # Use printf with %s\n so no line is interpreted as YAML or shell.
             printf '%s\n' \
               '// PATCH re-export QName at the legacy path (groovy.xml.QName) for Groovy 4.x' \
-              '// compatibility. Groovy 4.x moved the class to groovy.namespace.QName;' \
-              '// the shim preserves the old import path used by flutter.groovy.' \
               'class QName extends groovy.namespace.QName {' \
               '    QName(String localPart) { super(localPart) }' \
               '    QName(String namespaceURI, String localPart) { super(namespaceURI, localPart) }' \
@@ -191,7 +208,7 @@ jobs:
             echo "Wrote shim. Contents:"
             cat "$SHIM_FILE"
           else
-            echo "Shim already present; skipping."
+            echo "Shim already present."
           fi
 
       - name: flutter build apk --debug
@@ -202,6 +219,35 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: flutter-build-log
+          path: /tmp/flutter-build.log
+          if-no-files-found: warn
+          retention-days: 3
+
+      - name: Also dump shim + patch state
+        if: always()
+        run: |
+          echo "=== shim search diagnostic ===" >> /tmp/flutter-build.log
+          for candidate in \
+            "$FLUTTER_HOME/packages/flutter_tools/gradle/src/main/groovy/groovy/xml/QName.groovy" \
+            "/opt/hostedtoolcache/flutter/stable-3.27.4-x64/flutter/packages/flutter_tools/gradle/src/main/groovy/groovy/xml/QName.groovy" \
+            "/opt/hostedtoolcache/flutter/stable-x64/flutter/packages/flutter_tools/gradle/src/main/groovy/groovy/xml/QName.groovy"; do
+            echo "candidate: $candidate" >> /tmp/flutter-build.log
+            if [ -f "$candidate" ]; then
+              echo "  EXISTS. contents:" >> /tmp/flutter-build.log
+              cat "$candidate" >> /tmp/flutter-build.log
+            else
+              echo "  not present" >> /tmp/flutter-build.log
+            fi
+          done
+          # Re-upload
+        env:
+          GITHUB_STEP_SUMMARY: ''
+
+      - name: Re-upload build log with shim diagnostic
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-build-log-v2
           path: /tmp/flutter-build.log
           if-no-files-found: warn
           retention-days: 3
