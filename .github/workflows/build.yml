@@ -152,23 +152,46 @@ jobs:
             sed -i.bak "s|getDefaultProguardFile('proguard-android.txt')|'proguard-rules.pro'|g" "$GRADLE_FILE"
           fi
 
-      - name: Add groovy-xml to Flutter's bundled :gradle subproject
-        # `flutter_tools/gradle/flutter.groovy` imports `groovy.xml.QName`,
-        # which is missing from the classpath when AGP 9.x / Gradle 9.x's
-        # embedded Groovy distribution is used. Adding `groovy-xml` as a
-        # buildscript classpath dependency makes `QName` resolvable.
-        # This patches the Flutter SDK in $FLUTTER_HOME on the runner; it
-        # is not a project change.
+      - name: Add groovy.xml.QName shim to Flutter's bundled :gradle subproject
+        # `flutter_tools/gradle/flutter.groovy` imports `groovy.xml.QName`
+        # at line 8 and uses it at line 557. Groovy 4.x (shipped with
+        # Gradle 9.x) renamed this class to `groovy.namespace.QName`,
+        # removing the legacy path entirely. The shim below re-exports
+        # the class at the old path so the existing import keeps working
+        # on both Groovy 3.x and 4.x. We add the file alongside
+        # flutter.groovy in the same Groovy source set; Gradle picks it
+        # up automatically. This patches the Flutter SDK in $FLUTTER_HOME
+        # on the runner; it is not a project change.
         run: |
-          FLUTTER_GRADLE_BUILD="$FLUTTER_HOME/packages/flutter_tools/gradle/build.gradle.kts"
-          if [ -f "$FLUTTER_GRADLE_BUILD" ]; then
-            if ! grep -q "groovy-xml" "$FLUTTER_GRADLE_BUILD"; then
-              echo "Patching $FLUTTER_GRADLE_BUILD to add groovy-xml"
-              printf '\n// PATCH: groovy-xml for flutter.groovy QName import\ndependencies { compileOnly("org.codehaus.groovy:groovy-xml:3.0.21") }\n' >> "$FLUTTER_GRADLE_BUILD"
-            fi
+          FLUTTER_GROOVY_DIR="$FLUTTER_HOME/packages/flutter_tools/gradle/src/main/groovy"
+          SHIM_FILE="$FLUTTER_GROOVY_DIR/groovy/xml/QName.groovy"
+          echo "Looking for Groovy source dir: $FLUTTER_GROOVY_DIR"
+          if [ ! -d "$FLUTTER_GROOVY_DIR" ]; then
+            echo "WARN: $FLUTTER_GROOVY_DIR not found; cannot install shim"
+            echo "FLUTTER_HOME is: $FLUTTER_HOME"
+            ls "$FLUTTER_HOME/packages/flutter_tools/gradle/src/main/" 2>/dev/null || true
+            exit 1
+          fi
+          mkdir -p "$FLUTTER_GROOVY_DIR/groovy/xml"
+          if [ ! -f "$SHIM_FILE" ]; then
+            echo "Writing shim to $SHIM_FILE"
+            # Use printf with %s\n so no line is interpreted as YAML or shell.
+            printf '%s\n' \
+              '// PATCH re-export QName at the legacy path (groovy.xml.QName) for Groovy 4.x' \
+              '// compatibility. Groovy 4.x moved the class to groovy.namespace.QName;' \
+              '// the shim preserves the old import path used by flutter.groovy.' \
+              'class QName extends groovy.namespace.QName {' \
+              '    QName(String localPart) { super(localPart) }' \
+              '    QName(String namespaceURI, String localPart) { super(namespaceURI, localPart) }' \
+              '    QName(String namespaceURI, String localName, String prefix) {' \
+              '        super(namespaceURI, localName, prefix)' \
+              '    }' \
+              '}' \
+              > "$SHIM_FILE"
+            echo "Wrote shim. Contents:"
+            cat "$SHIM_FILE"
           else
-            echo "WARN: $FLUTTER_GRADLE_BUILD not found"
-            ls "$FLUTTER_HOME/packages/flutter_tools/gradle/" 2>/dev/null || true
+            echo "Shim already present; skipping."
           fi
 
       - name: flutter build apk --debug
