@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- flutter_downloader can save into the app's external files dir,
+         external storage, or internal cache. All three need to be
+         exposed via the FileProvider for the share/open intents. -->
+    <files-path name="internal_files" path="." />
+    <external-files-path name="external_files" path="." />
+    <external-path name="external" path="." />
+    <cache-path name="cache" path="." />
+    <external-cache-path name="external_cache" path="." />
+</paths>
