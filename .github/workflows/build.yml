@@ -104,6 +104,17 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
+      - name: Set up Android SDK
+        # subosito/flutter-action does NOT install the Android SDK or accept
+        # SDK licenses. Android builds need both. We pin a recent stable
+        # command-line tools and platform / build-tools versions.
+        uses: android-actions/setup-android@v3
+        with:
+          packages: |
+            platform-tools
+            platforms;android-34
+            build-tools;34.0.0
+
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
