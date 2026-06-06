@@ -30,7 +30,7 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: stable
-          flutter-version: '3.24.5' # pin to a known-good version; bump deliberately
+          flutter-version: '3.27.4' # pin to a known-good version; bump deliberately
           cache: true
 
       - name: Patch flutter_inappwebview_android proguard rule
@@ -81,7 +81,7 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: stable
-          flutter-version: '3.24.5'
+          flutter-version: '3.27.4'
           cache: true
 
       - name: Install dependencies
@@ -135,11 +135,23 @@ jobs:
           echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
           echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
 
+      - name: Pin Gradle 8.7
+        # The project's gradle-wrapper.properties pins Gradle 9.1.0, which
+        # works fine for `flutter run` on a developer machine but breaks
+        # `flutter build apk` in CI: Gradle 9.x's embedded Groovy does not
+        # include the legacy `groovy.xml.QName` class, and Flutter's
+        # bundled flutter_tools/gradle/flutter.groovy imports it.
+        # Pin Gradle 8.7 in CI only — local development is unaffected.
+        run: |
+          sed -i 's|gradle-9\.1\.0-all\.zip|gradle-8.7-all.zip|' \
+            android/gradle/wrapper/gradle-wrapper.properties
+          cat android/gradle/wrapper/gradle-wrapper.properties
+
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable
-          flutter-version: '3.24.5'
+          flutter-version: '3.27.4'
           cache: true
 
       - name: Install dependencies
